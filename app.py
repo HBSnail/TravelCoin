@@ -7,6 +7,7 @@ import configparser
 import urllib.parse
 
 from pymongo import MongoClient
+from flask_cors import CORS
 
 # ---------------------------------------------------------
 # Import all Part 1 (FX logic) functions from fx_api.py
@@ -25,6 +26,7 @@ from fx_api import (
 # ---------------------------------------------------------
 app = Flask(__name__)
 
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ---------------------------------------------------------
 # Load MongoDB Config (.properties file)
@@ -65,11 +67,19 @@ records = db["records"]
 # Helper Functions
 # ---------------------------------------------------------
 def hash_pw(password: str) -> bytes:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+    if (len(password)>64): return
+    try :
+        return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+    except:
+        return 
 
 
 def check_pw(password: str, hashed: bytes) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed)
+    if (len(password)>64): return False
+    try :
+        return bcrypt.checkpw(password.encode(), hashed)
+    except:
+        return False
 
 
 def validate_session(session_id: str):
@@ -104,12 +114,18 @@ def signup():
 # ---------------------------------------------------------
 # 2. LOGIN
 # ---------------------------------------------------------
-@app.get("/login")
+@app.post("/login")
 def login():
-    data = request.json or request.args
+    data = request.json
+    if not data:
+        return jsonify({"error": "Missing JSON data"}), 400
+
     username = data.get("username")
     password = data.get("password")
 
+    if not username or not password:
+        return jsonify({"error": "Missing username or password"}), 400
+    
     user = users.find_one({"username": username})
     if not user or not check_pw(password, user["password"]):
         return jsonify({"error": "Invalid login"}), 401
@@ -123,7 +139,7 @@ def login():
 
     return jsonify({
     "session_id": session_id,
-    "user_id": user["user_id"]
+    "user_id": user["username"]
     }), 200
 
 # ---------------------------------------------------------
@@ -145,8 +161,8 @@ def convert_currency():
 
     # Validate session
     session = validate_session(data.get("session_id"))
-    if not session:
-        return jsonify({"error": "Invalid session"}), 401
+   
+    #return jsonify({"error": "Invalid session"}), 401
 
     base_country = data.get("base_country_name")
     target_country = data.get("target_country_name")
@@ -164,20 +180,23 @@ def convert_currency():
 
     record_id = str(uuid.uuid4())
 
-    records.insert_one({
-        "record_id": record_id,
-        "user_id": session["user_id"],
-        "timestamp": datetime.utcnow(),
-        "base_currency": base_currency,
-        "target_currency": target_currency,
-        "amount": float(amount),
-        "rate": float(rate),
-        "result": float(result)
-    })
+    if session:
+        records.insert_one({
+            "record_id": record_id,
+            "user_id": session["user_id"],
+            "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            "base_currency": base_currency,
+            "target_currency": target_currency,
+            "amount": float(amount),
+            "rate": float(rate),
+            "result": float(result)
+        })
 
     return jsonify({
+        "record_id": record_id,
         "base_country_name": base_country,
         "base_currency_name": base_currency,
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
         "target_country_name": target_country,
         "target_currency_name": target_currency,
         "amount": float(amount),
@@ -257,7 +276,11 @@ def trend():
     trend_num = analyze_rate_trend(rates)
 
     mapping = {0: "up", 1: "down", 2: "flat"}
-    return jsonify({"trend": mapping[trend_num]}), 200
+    
+    return jsonify({
+        "trend": mapping[trend_num],
+        "rates": rates
+    }), 200
 
 #@app.get("/debug/users")
 #def list_users():
