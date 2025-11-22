@@ -259,14 +259,14 @@ def trend():
     mapping = {0: "up", 1: "down", 2: "flat"}
     return jsonify({"trend": mapping[trend_num]}), 200
 
-@app.get("/debug/users")
-def list_users():
-    all_users = list(users.find({}, {"_id": 0, "password": 0}))
-    return jsonify(all_users), 200
+#@app.get("/debug/users")
+#def list_users():
+#    all_users = list(users.find({}, {"_id": 0, "password": 0}))
+#    return jsonify(all_users), 200
 
 
 # ---------------------------------------------------------
 # Run Server
 # ---------------------------------------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    app.run(host="0.0.0.0", port=5000)

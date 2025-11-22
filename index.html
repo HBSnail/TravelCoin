@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TravelCoin Converter</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; margin-top: 10px; }
+    .cw-96 { width: 30rem; }
+    /* keep UI colors consistent */
+  </style>
+</head>
+
+<body class="bg-gradient-to-br from-slate-100 to-slate-200 min-h-screen flex flex-col items-center justify-start p-6">
+
+  <div id="loginBanContainer"></div>
+
+  <div class="w-full max-w-md bg-white shadow-2xl rounded-2xl p-8 border border-slate-100" id="converterBox">
+    <h2 class="text-3xl font-bold text-center mb-8 text-slate-800 tracking-tight">TravelCoin Exchange</h2>
+
+    <div class="flex items-center gap-4">
+      <div class="flex-1">
+        <label class="block font-semibold text-slate-700">Base Currency</label>
+        <select id="baseCurrency" class="mt-2 w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500"></select>
+      </div>
+
+      <span class="text-2xl mt-6">→</span>
+
+      <div class="flex-1">
+        <label class="block font-semibold text-slate-700">Target Currency</label>
+        <select id="targetCurrency" class="mt-2 w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500"></select>
+      </div>
+    </div>
+
+    <div id="exchangeRate" class="mt-4 p-4 border rounded-xl bg-gray-50 text-gray-800 whitespace-pre-line hidden"></div>
+
+    <div class="flex items-center gap-4 mt-4">
+      <input type="text" id="amount" placeholder="Enter amount"
+        class="flex-1 px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+        oninput="this.value=this.value.replace(/[^0-9.]/g,'');" />
+      <button id="convertBtn" class="py-3 px-6 bg-blue-600 text-white text-lg rounded-xl hover:bg-blue-700">Convert</button>
+    </div>
+
+    <h3 class="mt-8 text-xl font-bold text-slate-800">History</h3>
+    <ul id="historyList" class="mt-3 space-y-2"></ul>
+  </div>
+
+  <div id="dialogOverlay" class="hidden fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+    <div class="bg-white rounded-2xl shadow-2xl cw-96 p-6 border border-slate-100">
+      <h3 class="text-xl font-bold mb-4 text-slate-800" id="dialogTitle">Notification</h3>
+      <div id="dialogMessage" class="text-slate-700 mb-6"></div>
+      <div class="flex flex-col gap-2">
+        <button onclick="closeDialog()" class="w-full py-3 bg-gray-300 text-gray-800 rounded-xl hover:bg-gray-400">Close</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+function countryCodeToFlagEmoji(countryCode) {
+  if (!countryCode) return "";
+  return countryCode
+    .toUpperCase()
+    .split('')
+    .map(char => String.fromCodePoint(127397 + char.charCodeAt()))
+    .join('');
+}
+
+function showDialog(title, messageHtml) {
+  document.getElementById('dialogTitle').textContent = title;
+  document.getElementById('dialogMessage').innerHTML = messageHtml;
+  document.getElementById('dialogOverlay').classList.remove('hidden');
+}
+
+function closeDialog() {
+  document.getElementById('dialogOverlay').classList.add('hidden');
+}
+
+const API_BASE = "https://travelcoin.azurewebsites.net";
+
+async function apiGet(path) {
+  const res = await fetch(`${API_BASE}${path}`);
+  return res;
+}
+
+async function apiPost(path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body)
+  });
+  return res;
+}
+
+async function apiDelete(path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "DELETE",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body)
+  });
+  return res;
+}
+
+function getSessionId() {
+  return localStorage.getItem("session_id");
+}
+function getUserId() {
+  return localStorage.getItem("user_id");
+}
+function setSession(sessionId, userId) {
+  localStorage.setItem("session_id", sessionId);
+  localStorage.setItem("user_id", userId);
+}
+function clearSession() {
+  localStorage.removeItem("session_id");
+  localStorage.removeItem("user_id");
+}
+
+let history = [];
+
+async function loadSupportedCurrencies() {
+  try {
+    const res = await apiGet("/supported_currencies");
+    if (!res.ok) throw new Error("Failed to fetch currencies");
+    const currencies = await res.json();
+
+    const baseSelect = document.getElementById("baseCurrency");
+    const targetSelect = document.getElementById("targetCurrency");
+    baseSelect.innerHTML = "";
+    targetSelect.innerHTML = "";
+
+    currencies.forEach(cur => {
+      const optionBase = document.createElement("option");
+      optionBase.value = cur;
+      optionBase.textContent = cur + " " + countryCodeToFlagEmoji(cur.slice(0, 2));
+      baseSelect.appendChild(optionBase);
+
+      const optionTarget = document.createElement("option");
+      optionTarget.value = cur;
+      optionTarget.textContent = cur + " " + countryCodeToFlagEmoji(cur.slice(0, 2));
+      targetSelect.appendChild(optionTarget);
+    });
+
+    baseSelect.addEventListener("change", updateExchangeRate);
+    targetSelect.addEventListener("change", updateExchangeRate);
+
+    updateExchangeRate();
+  } catch (err) {
+    console.error("Error loading currencies:", err);
+  }
+}
+
+async function updateExchangeRate() {
+  const base = document.getElementById("baseCurrency").value;
+  const target = document.getElementById("targetCurrency").value;
+  const container = document.getElementById("exchangeRate");
+
+  if ((!base || !target) || (base === target)) {
+    container.textContent = "";
+    container.style.display = "none";
+    return;
+  }
+
+  try {
+    const res = await apiGet(`/rate?base=${encodeURIComponent(base)}&target=${encodeURIComponent(target)}`);
+    const res2 = await apiGet(`/rate?base=${encodeURIComponent(target)}&target=${encodeURIComponent(base)}`);
+    if (!res.ok || !res2.ok) throw new Error("Failed to fetch exchange rate");
+
+    const data = await res.json();
+    const data2 = await res2.json();
+
+    container.textContent = `1 ${base} = ${data.rate} ${target}\n1 ${target} = ${data2.rate} ${base}`;
+    container.style.display = "block";
+  } catch (err) {
+    container.textContent = "Error fetching rate";
+    container.style.display = "block";
+  }
+}
+
+function showLoginBan() {
+  const container = document.getElementById("loginBanContainer");
+  container.innerHTML = `
+    <div id='loginBan' class='w-full max-w-md bg-white border border-slate-300 p-4 rounded-xl mb-6 text-center text-black'>
+      If you want to save your conversion history, please
+      <button onclick='showLoginDialog()' class='px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700'>Login</button>
+    </div>
+  `;
+}
+
+function showLoginDialog() {
+  const loginHTML = `
+    <p class='mb-2'>Please enter your credentials to login.</p>
+    <input id='loginUser' type='text' placeholder='Username' class='w-full px-3 py-2 border rounded mb-2 focus:ring-2 focus:ring-blue-500'/>
+    <input id='loginPwd' type='password' placeholder='Password' class='w-full px-3 py-2 border rounded mb-2 focus:ring-2 focus:ring-blue-500'/>
+    <p class='mt-2 text-sm text-slate-500'>Your history will be saved after login.</p>
+    <button id='loginBtn' class='w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700'>Login</button>
+    <button id='dialogActionBtn' class='w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700'>Register</button>
+  `;
+  showDialog('Login', loginHTML);
+
+  document.getElementById("loginBtn").addEventListener("click", async () => {
+    const username = document.getElementById("loginUser").value.trim();
+    const password = document.getElementById("loginPwd").value.trim();
+    if (!username || !password) {
+      alert("Please enter username and password.");
+      return;
+    }
+    try {
+      const res = await apiPost("/login", { username, password });
+      const data = await res.json();
+      if (res.status === 200) {
+        setSession(data.session_id, data.user_id);
+        alert("Login successful!");
+        closeDialog();
+        location.reload();
+      } else {
+        alert("Login failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      alert("Network error: " + err);
+    }
+  });
+
+  document.getElementById('dialogActionBtn').textContent = 'Register';
+  document.getElementById('dialogActionBtn').onclick = showRegisterDialog;
+}
+
+function showRegisterDialog() {
+  const registerHTML = `
+    <p class='mb-2'>Create your account:</p>
+    <input id='regUser'  type='text' placeholder='Username' class='w-full px-3 py-2 border rounded mb-2 focus:ring-2 focus:ring-blue-500'/>
+    <input id='regPwd'  type='password' placeholder='Password' class='w-full px-3 py-2 border rounded mb-2 focus:ring-2 focus:ring-blue-500'/>
+    <button id='regBtn' class='w-full py-2 bg-green-600 text-white rounded hover:bg-green-700'>Register</button>
+    <p class='mt-2 text-sm text-slate-500'>After registration, you can log in and save your history.</p>
+  `;
+  showDialog('Register', registerHTML);
+
+  document.getElementById("regBtn").addEventListener("click", async () => {
+    const username = document.getElementById("regUser").value.trim();
+    const password = document.getElementById("regPwd").value.trim();
+    if (!username || !password) {
+      alert("Please enter username and password.");
+      return;
+    }
+    try {
+      const res = await apiPost("/signup", { username, password });
+      const data = await res.json();
+      if (res.status === 201) {
+        alert("Registration successful!");
+        showLoginDialog();
+      } else {
+        alert("Registration failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      alert("Network error: " + err);
+    }
+  });
+
+  document.getElementById('dialogActionBtn').textContent = 'OK';
+  document.getElementById('dialogActionBtn').onclick = closeDialog;
+}
+
+async function logout() {
+  const session_id = getSessionId();
+  if (!session_id) return;
+  try {
+    const res = await apiDelete("/login", { session_id });
+    if (res.status === 204) {
+      clearSession();
+      location.reload();
+    } else {
+      alert("Logout failed");
+    }
+  } catch (err) {
+    alert("Network error: " + err);
+  }
+}
+
+async function loadUserHistory() {
+  const session_id = getSessionId();
+  if (!session_id) return;
+  try {
+    const res = await apiGet(`/record?session_id=${encodeURIComponent(session_id)}`);
+    if (!res.ok) {
+      clearSession();
+      showLoginBan();
+      return;
+    }
+    const data = await res.json();
+    history = []; 
+    data.forEach(record => history.push(record));
+    loadHistory();
+    renderLogoutBan(); 
+  } catch (err) {
+    console.error("loadUserHistory error:", err);
+  }
+}
+
+function renderLogoutBan() {
+  const container = document.getElementById("loginBanContainer");
+  const user_id = getUserId() || "";
+  container.innerHTML = `
+    <div id='logoutBan' class='w-full max-w-md bg-white border border-slate-300 p-4 rounded-xl mb-6 text-center text-black'>
+      <p class="font-semibold text-lg mb-2">Welcome, <span id="welcomeUser" class="text-blue-600"></span> </p>
+      <p>If you want to stop saving your conversion history, please <button onclick='logout()' class='px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700'>Logout</button></p>
+    </div>
+  `;
+const welcomeUser = document.getElementById("welcomeUser");
+welcomeUser.innerText = user_id;
+}
+async function convert() {
+  const amount = parseFloat(document.getElementById('amount').value);
+  const base_currency = document.getElementById('baseCurrency').value.slice(0, 2);
+  const target_currency = document.getElementById('targetCurrency').value.slice(0, 2);
+  if (!amount) return showDialog('Error', 'Please enter a valid amount.');
+
+  const session_id = getSessionId();
+  try {
+    const res = await apiPost("/convert", {
+      base_country_name: base_currency,
+      target_country_name: target_currency,
+      amount: amount,
+      session_id: session_id
+    });
+
+    const data = await res.json();
+    if (res.status !== 200) {
+      alert("Conversion failed: " + (data.error || "Unknown error"));
+      return;
+    }
+
+    const resTrend = await apiGet(`/trends?base=${encodeURIComponent(data.base_currency_name)}&target=${encodeURIComponent(data.target_currency_name)}`);
+    const dataTrend = await resTrend.json();
+    if (!resTrend.ok) {
+      alert("Failed to load trend data");
+      return;
+    }
+
+    const chartHTML = `<div id="result" class="hidden mt-6 p-4 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-lg font-medium"></div><canvas id='trendChart' width='280' height='150'></canvas>`;
+    showDialog('Conversion Trend', chartHTML);
+
+    history.push({
+      record_id: data.record_id,
+      base_currency: data.base_currency_name,
+      base_country: data.base_country_name,
+      target_currency: data.target_currency_name,
+      target_country: data.target_country_name,
+      amount: data.amount,
+      rate: data.rate,
+      result: data.result,
+      timestamp: data.timestamp
+    });
+    loadHistory();
+
+    const resultBox = document.getElementById('result');
+    resultBox.classList.remove('hidden');
+    resultBox.textContent = `${data.amount} ${data.base_currency_name} ${countryCodeToFlagEmoji(data.base_country_name.slice(0,2))} = ${data.result.toFixed(2)} ${data.target_currency_name} ${countryCodeToFlagEmoji(data.target_country_name.slice(0,2))}`;
+
+    await renderTrendChart(dataTrend, data.base_currency_name, data.target_currency_name);
+
+  } catch (err) {
+    alert("Network error: " + err);
+  }
+}
+
+async function renderTrendChart(trendData, baseName, targetName) {
+  await new Promise(resolve => setTimeout(resolve, 50));
+  const canvas = document.getElementById('trendChart');
+  if (!canvas) return;
+  canvas.classList.remove('hidden');
+  const ctx = canvas.getContext('2d');
+
+  if (window._lastChart) {
+    window._lastChart.destroy();
+    window._lastChart = null;
+  }
+
+  const trend = trendData.trend || 'flat';
+  const colorBorder = trend === 'up' ? 'rgb(34,197,94)' : trend === 'down' ? 'rgb(239,68,68)' : 'rgb(107,114,128)';
+  const colorBg = trend === 'up' ? 'rgba(34,197,94,0.2)' : trend === 'down' ? 'rgba(239,68,68,0.2)' : 'rgba(107,114,128,0.2)';
+
+  window._lastChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: trendData.rates.map((_, i) => `Day ${i - trendData.rates.length + 1}`),
+      datasets: [{
+        label: `${baseName} → ${targetName} (${trend})`,
+        data: trendData.rates,
+        borderColor: colorBorder,
+        backgroundColor: colorBg,
+        tension: 0.3,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: true } },
+      scales: { y: { beginAtZero: false } }
+    }
+  });
+}
+
+function loadHistory() {
+  const list = document.getElementById('historyList');
+  list.innerHTML = '';
+
+  history.slice().reverse().forEach((h, idx) => {
+    const li = document.createElement('li');
+    li.className = 'flex flex-col bg-blue-50 border border-blue-200 p-3 rounded-xl text-blue-900';
+
+    li.innerHTML = `
+      <div class="flex justify-between items-center">
+        <span class="text-left flex-1">
+          <div class="flex justify-between items-center">
+            <span class="text-left flex-1">
+              ${h.amount} ${h.base_currency} ${countryCodeToFlagEmoji(String(h.base_country || h.base_currency).slice(0, 2))}
+            </span>
+            <span class="text-center flex-1">→</span>
+            <span class="text-right flex-1">
+              ${Number(h.result).toFixed(2)} ${h.target_currency} ${countryCodeToFlagEmoji(String(h.target_country || h.target_currency).slice(0, 2))}
+            </span>
+          </div>
+
+          <div class="flex justify-between text-sm text-slate-600 mt-1 items-center">
+            <span>1 ${h.base_currency} = ${Number(h.rate).toFixed(4)} ${h.target_currency}</span>
+            <span class="text-right">${h.timestamp}</span>
+          </div>
+        </span>
+
+        <span class="text-right">
+          <button class="delete-btn text-red-500 hover:text-red-700 text-xs" style="margin-left:10px;font-size:10px;color:red;">🗑</button>
+        </span>
+      </div>
+    `;
+
+    list.appendChild(li);
+
+    const deleteBtn = li.querySelector('.delete-btn');
+    deleteBtn.addEventListener('click', async () => {
+      await deleteRecord(h.record_id);
+      history = history.filter(item => item.record_id !== h.record_id);
+      loadHistory();
+    });
+  });
+}
+
+async function deleteRecord(record_id) {
+  const session_id = getSessionId();
+  if (!session_id) return;
+  try {
+    const res = await apiDelete("/record", { session_id, record_id });
+    if (res.status !== 204) {
+      const d = await res.json().catch(()=>({}));
+      alert("Delete failed: " + (d.error || "Unknown error"));
+    }
+  } catch (err) {
+    alert("Network error: " + err);
+  }
+}
+
+window.addEventListener("DOMContentLoaded", async () => {
+  await loadSupportedCurrencies();
+
+  const session_id = getSessionId();
+  const container = document.getElementById("loginBanContainer");
+  if (!session_id) {
+    showLoginBan();
+  } else {
+    await loadUserHistory();
+  }
+
+  document.getElementById("convertBtn").addEventListener("click", convert);
+});
+</script>
+
+</body>
+</html>
