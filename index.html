@@ -312,8 +312,8 @@ welcomeUser.innerText = user_id;
 }
 async function convert() {
   const amount = parseFloat(document.getElementById('amount').value);
-  const base_currency = document.getElementById('baseCurrency').value.slice(0, 2);
-  const target_currency = document.getElementById('targetCurrency').value.slice(0, 2);
+  const base_currency = document.getElementById('baseCurrency').value.slice(0, 3);
+  const target_currency = document.getElementById('targetCurrency').value.slice(0, 3);
   if (!amount) return showDialog('Error', 'Please enter a valid amount.');
 
   const session_id = getSessionId();
@@ -338,7 +338,7 @@ async function convert() {
       return;
     }
 
-    const chartHTML = `<div id="result" class="hidden mt-6 p-4 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-lg font-medium"></div><canvas id='trendChart' width='280' height='150'></canvas>`;
+    const chartHTML = `<div id="result" style="white-space: pre-line;" class="hidden mt-6 p-4 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-lg font-medium"></div><div id="trend" style="white-space: pre-line;" class="hidden mt-6 p-4 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-lg font-medium"></div><canvas id='trendChart' width='280' height='150' style='padding-top: 10px;'></canvas>`;
     showDialog('Conversion Trend', chartHTML);
 
     history.push({
@@ -356,7 +356,10 @@ async function convert() {
 
     const resultBox = document.getElementById('result');
     resultBox.classList.remove('hidden');
-    resultBox.textContent = `${data.amount} ${data.base_currency_name} ${countryCodeToFlagEmoji(data.base_country_name.slice(0,2))} = ${data.result.toFixed(2)} ${data.target_currency_name} ${countryCodeToFlagEmoji(data.target_country_name.slice(0,2))}`;
+        const trendBox = document.getElementById('trend');
+    trendBox.classList.remove('hidden');
+    resultBox.textContent = `${data.timestamp}\n${data.amount} ${data.base_currency_name} ${countryCodeToFlagEmoji(data.base_country_name.slice(0,2))} = ${data.result.toFixed(2)} ${data.target_currency_name} ${countryCodeToFlagEmoji(data.target_country_name.slice(0,2))}`;
+    trendBox.textContent = `${dataTrend.trend === 'up' ? 'The exchange rate has increased recently.' : dataTrend.trend === 'down' ? 'The exchange rate has decreased recently.' : 'The exchange rate remains stable.'}`;
 
     await renderTrendChart(dataTrend, data.base_currency_name, data.target_currency_name);
 
@@ -386,7 +389,7 @@ async function renderTrendChart(trendData, baseName, targetName) {
     data: {
       labels: trendData.rates.map((_, i) => `Day ${i - trendData.rates.length + 1}`),
       datasets: [{
-        label: `${baseName} → ${targetName} (${trend})`,
+        label: `${baseName} → ${targetName}`,
         data: trendData.rates,
         borderColor: colorBorder,
         backgroundColor: colorBg,

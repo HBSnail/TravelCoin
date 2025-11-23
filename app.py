@@ -170,8 +170,10 @@ def convert_currency():
     amount = Decimal(str(data.get("amount")))
 
     try:
-        base_currency = get_country_currency(base_country)
-        target_currency = get_country_currency(target_country)
+        #base_currency = get_country_currency(base_country)
+        #target_currency = get_country_currency(target_country)
+        base_currency = (base_country)
+        target_currency = (target_country)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 

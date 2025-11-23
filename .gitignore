@@ -1,2 +1,3 @@
 .vscode
 .deployment
+__pycache__
