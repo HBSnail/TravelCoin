@@ -268,14 +268,4 @@ session_id: {YOUR_SESSION}
 
 ---
 
-# 🏁 Done!
 
-If you want, I can also generate:
-
-✅ `requirements.txt`
-✅ Full final `app.py` (if not yet final)
-✅ Diagram (System Architecture)
-✅ Video-ready explanation
-✅ API documentation (Swagger)
-
-Just tell me!
