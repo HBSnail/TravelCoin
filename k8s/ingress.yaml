@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: travelcoin-ingress
+  annotations:
+    kubernetes.io/ingress.class: "gce"  
+spec:
+  tls:
+  - hosts:
+    - api.travelcoin.linkpc.net
+    secretName: travelcoin-tls       
+  rules:
+  - host: api.travelcoin.linkpc.net
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: travel-coin-service   
+            port:
+              number: 80

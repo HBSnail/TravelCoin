@@ -88,6 +88,9 @@ def validate_session(session_id: str):
         return None
     return users.find_one({"user_id": session["user_id"]})
 
+@app.route("/")
+def health():
+    return "OK",200
 
 # ---------------------------------------------------------
 # 1. SIGNUP

@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: travel-coin
+  labels:
+    app: wfe
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wfe
+  template:
+    metadata:
+      labels:
+        app: wfe
+    spec:
+      containers:
+      - name: travel-coin-back
+        image: gcr.io/myproject-474410/travel-coin:1.0
+        ports:
+        - containerPort: 5000
