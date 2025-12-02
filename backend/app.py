@@ -5,6 +5,7 @@ import uuid
 import bcrypt
 import configparser
 import urllib.parse
+import os
 
 from pymongo import MongoClient
 from flask_cors import CORS
@@ -90,7 +91,7 @@ def validate_session(session_id: str):
 
 @app.route("/")
 def health():
-    return "OK",200
+    return os.environ.get("HOSTNAME", "unknown"),200
 
 # ---------------------------------------------------------
 # 1. SIGNUP

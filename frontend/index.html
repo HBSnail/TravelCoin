@@ -78,7 +78,7 @@ function closeDialog() {
   document.getElementById('dialogOverlay').classList.add('hidden');
 }
 
-const API_BASE = "https://api.travelcoin.linkpc.net/";
+const API_BASE = "https://api.travelcoin.linkpc.net";
 
 async function apiGet(path) {
   const res = await fetch(`${API_BASE}${path}`);
