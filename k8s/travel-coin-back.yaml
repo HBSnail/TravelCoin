@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
       - name: travel-coin-back
-        image: gcr.io/myproject-474410/travel-coin:1.0
+        image: gcr.io/myproject-474410/travelcoin
         ports:
         - containerPort: 5000
